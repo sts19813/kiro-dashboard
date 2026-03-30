@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 @include('partials.layout.head')
 <body id="kt_app_body"
@@ -56,10 +56,14 @@
                         <div id="kt_app_content" class="app-content flex-column-fluid">
                             <!--begin::Content container-->
                             <div id="kt_app_content_container" class="app-container container-fluid">
-                                @hasSection('content')
-                                    @yield('content')
+                                @isset($slot)
+                                    {{ $slot }}
                                 @else
-                                    @include('partials.layout.content')
+                                    @hasSection('content')
+                                        @yield('content')
+                                    @else
+                                        @include('partials.layout.content')
+                                    @endif
                                 @endif
                             </div>
                             <!--end::Content container-->
