@@ -4,7 +4,7 @@
          <!--begin::Copyright-->
          <div class="text-gray-900 order-2 order-md-1">
              <span class="text-muted fw-semibold me-1">{{ date('Y') }}&copy;</span>
-             <a href="stomtickets.com" target="_blank" class="text-gray-800 text-hover-primary">stomtickets.com</a>
+             <a href="stomtickets.com" target="_blank" class="text-gray-800 text-hover-primary">kiro.com</a>
          </div>
      </div>
      <!--end::Footer container-->
