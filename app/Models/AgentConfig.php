@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class AgentConfig extends Model
 {
@@ -50,6 +51,7 @@ class AgentConfig extends Model
                 'whatsapp_enabled' => true,
                 'webhook_url' => '',
             ],
+            'datasets' => [],
             'security' => [
                 'api_key' => '',
             ],
@@ -136,9 +138,47 @@ class AgentConfig extends Model
                 'whatsapp_enabled' => (bool) data_get($merged, 'integrations.whatsapp_enabled', true),
                 'webhook_url' => (string) data_get($merged, 'integrations.webhook_url', ''),
             ],
+            'datasets' => self::sanitizeDatasets(data_get($merged, 'datasets', [])),
             'security' => [
                 'api_key' => (string) data_get($merged, 'security.api_key', ''),
             ],
         ];
+    }
+
+    private static function sanitizeDatasets(mixed $datasets): array
+    {
+        if (! is_array($datasets)) {
+            return [];
+        }
+
+        $normalizedDatasets = [];
+
+        foreach ($datasets as $dataset) {
+            if (! is_array($dataset)) {
+                continue;
+            }
+
+            $storagePath = (string) data_get($dataset, 'storage_path', '');
+            $url = (string) data_get($dataset, 'url', '');
+
+            if ($url === '' && $storagePath !== '') {
+                $url = url(Storage::disk('public')->url($storagePath));
+            }
+
+            $deterministicSeed = $storagePath !== '' ? $storagePath : ($url.(string) data_get($dataset, 'file_name', 'dataset'));
+            $id = (string) data_get($dataset, 'id', sha1($deterministicSeed));
+
+            $normalizedDatasets[] = [
+                'id' => $id,
+                'file_name' => (string) data_get($dataset, 'file_name', 'dataset'),
+                'file_type' => (string) data_get($dataset, 'file_type', ''),
+                'file_size' => (int) data_get($dataset, 'file_size', 0),
+                'url' => $url,
+                'uploaded_at' => (string) data_get($dataset, 'uploaded_at', now()->toISOString()),
+                'storage_path' => $storagePath,
+            ];
+        }
+
+        return $normalizedDatasets;
     }
 }

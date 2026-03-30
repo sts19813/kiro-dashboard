@@ -32,7 +32,7 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('settings.agent.store') }}">
+        <form method="POST" action="{{ route('settings.agent.store') }}" enctype="multipart/form-data">
             @csrf
 
             <div class="card mb-5">
@@ -222,7 +222,64 @@
 
             <div class="card mb-5">
                 <div class="card-header">
-                    <h3 class="card-title">7. Seguridad</h3>
+                    <h3 class="card-title">7. Datasets</h3>
+                </div>
+                <div class="card-body">
+                    @php($datasets = data_get($config, 'datasets', []))
+
+                    <div class="mb-6">
+                        <label for="dataset_files" class="form-label">Agregar archivos CSV o JSON</label>
+                        <input type="file" id="dataset_files" name="datasets[files][]" class="form-control"
+                            accept=".csv,.json" multiple>
+                        <div class="form-text">Se publican en <code>/storage/agent-datasets</code> para consumo externo.</div>
+                    </div>
+
+                    @if (count($datasets))
+                        <div class="table-responsive">
+                            <table class="table table-row-dashed align-middle gs-0 gy-3">
+                                <thead>
+                                    <tr class="fw-bold text-muted">
+                                        <th>Eliminar</th>
+                                        <th>Archivo</th>
+                                        <th>Tipo</th>
+                                        <th>Tamano (bytes)</th>
+                                        <th>URL</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($datasets as $dataset)
+                                        <tr>
+                                            <td class="w-80px">
+                                                <div class="form-check form-check-sm form-check-custom form-check-solid">
+                                                    <input class="form-check-input" type="checkbox"
+                                                        name="datasets[remove_ids][]"
+                                                        value="{{ data_get($dataset, 'id') }}"
+                                                        @checked(in_array((string) data_get($dataset, 'id'), array_map('strval', (array) old('datasets.remove_ids', [])), true))>
+                                                </div>
+                                            </td>
+                                            <td>{{ data_get($dataset, 'file_name') }}</td>
+                                            <td>{{ data_get($dataset, 'file_type') }}</td>
+                                            <td>{{ data_get($dataset, 'file_size') }}</td>
+                                            <td>
+                                                <a href="{{ data_get($dataset, 'url') }}" target="_blank"
+                                                    rel="noopener noreferrer">
+                                                    Descargar
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @else
+                        <div class="text-muted">Aun no hay datasets cargados.</div>
+                    @endif
+                </div>
+            </div>
+
+            <div class="card mb-5">
+                <div class="card-header">
+                    <h3 class="card-title">8. Seguridad</h3>
                 </div>
                 <div class="card-body">
                     <div class="row g-5">

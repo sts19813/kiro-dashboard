@@ -9,3 +9,6 @@ Route::middleware('agent.api.key')->group(function () {
 });
 
 
+Route::get('/agent/config', [AgentConfigController::class, 'apiShow'])->name('api.agent.config.show');
+
+Route::get('/points', [AgentConfigController::class, 'points']);

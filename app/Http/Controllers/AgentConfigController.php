@@ -6,6 +6,9 @@ use App\Models\AgentConfig;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class AgentConfigController extends Controller
@@ -15,6 +18,42 @@ class AgentConfigController extends Controller
         return view('config.agente', [
             'config' => AgentConfig::activeConfig(),
         ]);
+    }
+
+    public function points()
+    {
+        $path = 'agent-datasets/BD-Restaurantes.csv';
+
+        if (!Storage::disk('public')->exists($path)) {
+            return response()->json([]);
+        }
+
+        $file = Storage::disk('public')->get($path);
+        $lines = explode("\n", $file);
+
+        $headers = str_getcsv(array_shift($lines));
+
+        $data = [];
+
+        foreach ($lines as $line) {
+            if (empty(trim($line)))
+                continue;
+
+            $row = array_combine($headers, str_getcsv($line));
+
+            if (!isset($row['lat']) || !isset($row['lng']))
+                continue;
+
+            $data[] = [
+                'name' => $row['name'],
+                'lat' => (float) $row['lat'],
+                'lng' => (float) $row['lng'],
+                'category' => $row['category'],
+                'price' => (int) $row['price_level'],
+            ];
+        }
+
+        return response()->json($data);
     }
 
     public function store(Request $request): RedirectResponse
@@ -47,6 +86,7 @@ class AgentConfigController extends Controller
     private function validatedConfig(Request $request): array
     {
         $validated = $request->validate($this->rules());
+        $activeConfig = AgentConfig::activeConfig();
 
         return AgentConfig::sanitizeConfig([
             'general' => [
@@ -79,6 +119,10 @@ class AgentConfigController extends Controller
                 'whatsapp_enabled' => $request->boolean('integrations.whatsapp_enabled', true),
                 'webhook_url' => data_get($validated, 'integrations.webhook_url', ''),
             ],
+            'datasets' => $this->resolvedDatasets(
+                $request,
+                data_get($activeConfig, 'datasets', [])
+            ),
             'security' => [
                 'api_key' => data_get($validated, 'security.api_key', ''),
             ],
@@ -112,7 +156,69 @@ class AgentConfigController extends Controller
             'integrations.whatsapp_enabled' => ['nullable', 'boolean'],
             'integrations.webhook_url' => ['nullable', 'url'],
 
+            'datasets' => ['nullable', 'array'],
+            'datasets.remove_ids' => ['nullable', 'array'],
+            'datasets.remove_ids.*' => ['string'],
+            'datasets.files' => ['nullable', 'array'],
+            'datasets.files.*' => ['file', 'mimes:csv,json', 'max:20480'],
+
             'security.api_key' => ['nullable', 'string', 'max:255'],
         ];
+    }
+
+    private function resolvedDatasets(Request $request, array $currentDatasets): array
+    {
+        $removeIds = collect((array) $request->input('datasets.remove_ids', []))
+            ->filter(fn($id) => is_scalar($id) && (string) $id !== '')
+            ->map(fn($id) => (string) $id)
+            ->values();
+
+        $currentCollection = collect($currentDatasets)
+            ->filter(fn($dataset) => is_array($dataset));
+
+        $this->deleteRemovedDatasets($currentCollection, $removeIds);
+
+        $keptDatasets = $currentCollection
+            ->reject(fn(array $dataset) => $removeIds->contains((string) data_get($dataset, 'id')))
+            ->values();
+
+        foreach ((array) $request->file('datasets.files', []) as $datasetFile) {
+            if (!$datasetFile) {
+                continue;
+            }
+
+            $storagePath = $datasetFile->store('agent-datasets', 'public');
+
+            $keptDatasets->push([
+                'id' => (string) Str::uuid(),
+                'file_name' => (string) $datasetFile->getClientOriginalName(),
+                'file_type' => strtolower((string) $datasetFile->getClientOriginalExtension()),
+                'file_size' => (int) $datasetFile->getSize(),
+                'url' => url(Storage::disk('public')->url($storagePath)),
+                'uploaded_at' => now()->toISOString(),
+                'storage_path' => $storagePath,
+            ]);
+        }
+
+        return $keptDatasets->values()->all();
+    }
+
+    private function deleteRemovedDatasets(Collection $currentDatasets, Collection $removeIds): void
+    {
+        if ($removeIds->isEmpty()) {
+            return;
+        }
+
+        $datasetsToDelete = $currentDatasets
+            ->filter(fn(array $dataset) => $removeIds->contains((string) data_get($dataset, 'id')))
+            ->values();
+
+        foreach ($datasetsToDelete as $dataset) {
+            $storagePath = (string) data_get($dataset, 'storage_path', '');
+
+            if ($storagePath !== '' && Storage::disk('public')->exists($storagePath)) {
+                Storage::disk('public')->delete($storagePath);
+            }
+        }
     }
 }
