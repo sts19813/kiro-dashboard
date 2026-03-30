@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\LanguageController;
+use App\Http\Controllers\AgentConfigController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -16,10 +17,9 @@ Route::get('/dashboard', function () {
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('/config/usuarios', 'pages.config.users')->name('settings.users');
-    Route::view('/config/agente', 'pages.config.agent')->name('settings.agent');
-});
+    Route::get('/config/agente', [AgentConfigController::class, 'index'])->name('settings.agent');
+    Route::post('/config/agente', [AgentConfigController::class, 'store'])->name('settings.agent.store');
 
-Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'show'])->name('profile.index');
     Route::get('/profile/edit', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');

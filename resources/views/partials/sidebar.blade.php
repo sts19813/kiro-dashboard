@@ -78,7 +78,8 @@
                     </a>
                 </div>
                 <div class="menu-item">
-                    <a href="{{ route('settings.agent') }}" class="menu-link">
+                    <a href="{{ route('settings.agent') }}"
+                        class="menu-link {{ request()->is('config/agente*') ? 'active' : '' }}">
                         <span class="menu-icon">
                             <i class="ki-outline ki-setting-3 fs-2"></i>
                         </span>
