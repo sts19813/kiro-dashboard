@@ -29,7 +29,8 @@
                     </a>
                 </div>
                 <div class="menu-item">
-                    <a href="javascript:void(0);" class="menu-link">
+                    <a href="{{ route('locations.index') }}"
+                        class="menu-link {{ request()->is('ubicaciones*') || request()->is('mapa*') ? 'active' : '' }}">
                         <span class="menu-icon">
                             <i class="ki-outline ki-location fs-2"></i>
                         </span>

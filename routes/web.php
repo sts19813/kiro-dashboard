@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\AgentConfigController;
+use App\Http\Controllers\LocationController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -25,9 +26,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    Route::get('/mapa', function () {
-        return view('mapa.index');
-    });
+    Route::get('/ubicaciones', [LocationController::class, 'index'])->name('locations.index');
+    Route::post('/ubicaciones/puntos', [LocationController::class, 'store'])->name('locations.store');
+    Route::delete('/ubicaciones/puntos/{locationPoint}', [LocationController::class, 'destroy'])->name('locations.destroy');
+    Route::redirect('/mapa', '/ubicaciones');
 });
 
 require __DIR__ . '/auth.php';
