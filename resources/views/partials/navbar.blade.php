@@ -19,8 +19,8 @@
                 data-kt-menu-attach="parent"
                 data-kt-menu-placement="bottom-end">
 
-                @if (Auth::user()->profile_photo)
-                    <img src="{{ asset(Auth::user()->profile_photo) }}" 
+                @if (Auth::user()->profile_image)
+                    <img src="{{ asset('storage/' . Auth::user()->profile_image) }}" 
                         alt="user"
                         class="symbol-label"
                         style="object-fit: cover;">
@@ -40,8 +40,8 @@
                 <div class="menu-item px-3">
                     <div class="menu-content d-flex align-items-center px-3">
                        <div class="symbol symbol-50px me-5">
-                            @if (Auth::user()->profile_photo)
-                                <img src="{{ asset(Auth::user()->profile_photo) }}"
+                            @if (Auth::user()->profile_image)
+                                <img src="{{ asset('storage/' . Auth::user()->profile_image) }}"
                                     alt="Foto de perfil"
                                     class="symbol-label"
                                     style="object-fit: cover;">

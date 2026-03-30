@@ -18,8 +18,8 @@
             <!--end::Sidebar mobile toggle-->
             <!--begin::Logo-->
             <a href="/desarrollos" class="app-sidebar-logo">
-                <img alt="Logo" src="/assets/logo.svg" class="theme-light-show" style="width:110px;filter: invert(1);"/>
-                <img alt="Logo" src="/assets/logo.svg" class="theme-dark-show"  style="width:110px" />
+                <img alt="Logo" src="/assets/img/logo.png" class="theme-light-show" style="width:110px;"/>
+                <img alt="Logo" src="/assets/img/logo.png" class="theme-dark-show"  style="width:110px;filter: invert(1);" />
             </a>
             <!--end::Logo-->
         </div>
