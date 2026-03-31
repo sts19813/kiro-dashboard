@@ -12,4 +12,5 @@ Route::middleware('agent.api.key')->group(function () {
 });
 
 Route::get('/locations', [LocationController::class, 'apiIndex'])->name('api.locations.index');
+Route::get('/locations/{locationId}', [LocationController::class, 'apiShow'])->name('api.locations.show');
 Route::get('/points', [LocationController::class, 'apiPoints'])->name('api.points.index');

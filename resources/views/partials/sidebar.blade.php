@@ -30,15 +30,7 @@
                 </div>
                 <div class="menu-item">
                     <a href="{{ route('locations.index') }}"
-                        class="menu-link {{ request()->is('ubicaciones*') || request()->is('mapa*') ? 'active' : '' }}">
-                        <span class="menu-icon">
-                            <i class="ki-outline ki-location fs-2"></i>
-                        </span>
-                        <span class="menu-title">Ubicaciones</span>
-                    </a>
-                </div>
-                <div class="menu-item">
-                    <a href="javascript:void(0);" class="menu-link">
+                        class="menu-link {{ request()->is('provedores*') || request()->is('proveedores*') || request()->is('ubicaciones*') || request()->is('mapa*') ? 'active' : '' }}">
                         <span class="menu-icon">
                             <i class="ki-outline ki-building fs-2"></i>
                         </span>

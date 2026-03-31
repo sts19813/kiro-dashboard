@@ -40,13 +40,12 @@ class LocationController extends Controller
     public function apiIndex(Request $request, LocationCatalogService $catalog): JsonResponse
     {
         $filters = $request->only(['q', 'category', 'city', 'tag', 'source_type']);
-        $allLocations = $catalog->getLocations();
         $locations = $catalog->getLocations($filters);
 
         return response()->json([
             'status' => 'success',
             'count' => count($locations),
-            'filters' => $catalog->getFilterOptions($allLocations),
+            'filters' => $catalog->getFilterOptions(),
             'data' => $locations,
         ]);
     }
@@ -54,8 +53,30 @@ class LocationController extends Controller
     public function apiPoints(Request $request, LocationCatalogService $catalog): JsonResponse
     {
         $filters = $request->only(['q', 'category', 'city', 'tag', 'source_type']);
+        $locations = $catalog->getLocations($filters);
 
-        return response()->json($catalog->getLocations($filters));
+        return response()->json([
+            'status' => 'success',
+            'count' => count($locations),
+            'data' => $locations,
+        ]);
+    }
+
+    public function apiShow(string $locationId, LocationCatalogService $catalog): JsonResponse
+    {
+        $location = $catalog->getLocationDetails($locationId);
+
+        if (! $location) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Location not found',
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $location,
+        ]);
     }
 
     public function apiStore(Request $request): JsonResponse

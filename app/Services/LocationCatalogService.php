@@ -4,26 +4,125 @@ namespace App\Services;
 
 use App\Models\AgentConfig;
 use App\Models\LocationPoint;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Throwable;
 
 class LocationCatalogService
 {
+    private ?array $catalogData = null;
+
     public function getLocations(array $filters = []): array
+    {
+        $filtered = $this->applyFilters($this->catalogLocations(), $filters);
+
+        return array_map(fn (array $location) => $this->toSummaryLocation($location), $filtered);
+    }
+
+    public function getLocationDetails(string $locationId): ?array
+    {
+        foreach ($this->catalogLocations() as $location) {
+            if ((string) data_get($location, 'id') === $locationId) {
+                return $this->toDetailedLocation($location);
+            }
+        }
+
+        return null;
+    }
+
+    public function getFilterOptions(?array $locations = null): array
+    {
+        if ($locations === null) {
+            return $this->catalogData()['filters'];
+        }
+
+        return $this->buildFilterOptions($locations);
+    }
+
+    private function catalogData(): array
+    {
+        if ($this->catalogData !== null) {
+            return $this->catalogData;
+        }
+
+        $cacheKey = 'locations.catalog.v2.'.sha1($this->catalogFingerprint());
+        $resolver = fn () => $this->buildCatalogData();
+
+        try {
+            // Avoid DB cache for this large payload to prevent max_allowed_packet issues.
+            if (config('cache.default') === 'database' && array_key_exists('file', (array) config('cache.stores', []))) {
+                $this->catalogData = Cache::store('file')->remember($cacheKey, now()->addHours(6), $resolver);
+
+                return $this->catalogData;
+            }
+
+            $this->catalogData = Cache::remember($cacheKey, now()->addHours(6), $resolver);
+
+            return $this->catalogData;
+        } catch (Throwable) {
+            // Graceful fallback: never break endpoint if cache backend is unavailable.
+            $this->catalogData = $this->buildCatalogData();
+
+            return $this->catalogData;
+        }
+    }
+
+    private function buildCatalogData(): array
     {
         $locations = array_merge(
             $this->loadDatasetLocations(),
             $this->loadManualLocations()
         );
 
-        $filtered = $this->applyFilters($locations, $filters);
+        usort($locations, fn (array $a, array $b) => strcmp($a['name'], $b['name']));
 
-        usort($filtered, fn (array $a, array $b) => strcmp($a['name'], $b['name']));
-
-        return $filtered;
+        return [
+            'locations' => $this->decorateLocations($locations),
+            'filters' => $this->buildFilterOptions($locations),
+        ];
     }
 
-    public function getFilterOptions(array $locations): array
+    private function catalogLocations(): array
+    {
+        return $this->catalogData()['locations'];
+    }
+
+    private function decorateLocations(array $locations): array
+    {
+        return array_map(function (array $location) {
+            $location['_tags_normalized'] = array_map(
+                fn ($item) => Str::lower((string) $item),
+                (array) data_get($location, 'tags', [])
+            );
+            $location['_search_blob'] = Str::lower($this->buildSearchBlob($location));
+            $location['delete_id'] = data_get($location, 'editable') && data_get($location, 'raw.id')
+                ? (string) data_get($location, 'raw.id')
+                : null;
+
+            return $location;
+        }, $locations);
+    }
+
+    private function buildSearchBlob(array $location): string
+    {
+        $rawScalars = array_map(
+            fn ($value) => is_scalar($value) ? (string) $value : '',
+            (array) data_get($location, 'raw', [])
+        );
+
+        return implode(' ', [
+            (string) data_get($location, 'name', ''),
+            (string) data_get($location, 'category', ''),
+            (string) data_get($location, 'city', ''),
+            (string) data_get($location, 'address', ''),
+            (string) data_get($location, 'description', ''),
+            implode(' ', (array) data_get($location, 'tags', [])),
+            implode(' ', $rawScalars),
+        ]);
+    }
+
+    private function buildFilterOptions(array $locations): array
     {
         $categories = [];
         $cities = [];
@@ -58,6 +157,77 @@ class LocationCatalogService
             'cities' => array_keys($cities),
             'tags' => array_keys($tags),
         ];
+    }
+
+    private function toSummaryLocation(array $location): array
+    {
+        return [
+            'id' => (string) data_get($location, 'id', ''),
+            'name' => (string) data_get($location, 'name', ''),
+            'category' => (string) data_get($location, 'category', ''),
+            'city' => (string) data_get($location, 'city', ''),
+            'address' => (string) data_get($location, 'address', ''),
+            'phone' => (string) data_get($location, 'phone', ''),
+            'website' => (string) data_get($location, 'website', ''),
+            'lat' => (float) data_get($location, 'lat', 0),
+            'lng' => (float) data_get($location, 'lng', 0),
+            'tags' => array_values((array) data_get($location, 'tags', [])),
+            'source' => (string) data_get($location, 'source', ''),
+            'source_type' => (string) data_get($location, 'source_type', ''),
+            'editable' => (bool) data_get($location, 'editable', false),
+            'delete_id' => data_get($location, 'delete_id'),
+        ];
+    }
+
+    private function toDetailedLocation(array $location): array
+    {
+        return [
+            'id' => (string) data_get($location, 'id', ''),
+            'name' => (string) data_get($location, 'name', ''),
+            'category' => (string) data_get($location, 'category', ''),
+            'city' => (string) data_get($location, 'city', ''),
+            'address' => (string) data_get($location, 'address', ''),
+            'phone' => (string) data_get($location, 'phone', ''),
+            'email' => (string) data_get($location, 'email', ''),
+            'website' => (string) data_get($location, 'website', ''),
+            'description' => (string) data_get($location, 'description', ''),
+            'lat' => (float) data_get($location, 'lat', 0),
+            'lng' => (float) data_get($location, 'lng', 0),
+            'tags' => array_values((array) data_get($location, 'tags', [])),
+            'source' => (string) data_get($location, 'source', ''),
+            'source_type' => (string) data_get($location, 'source_type', ''),
+            'editable' => (bool) data_get($location, 'editable', false),
+            'delete_id' => data_get($location, 'delete_id'),
+            'raw' => (array) data_get($location, 'raw', []),
+        ];
+    }
+
+    private function catalogFingerprint(): string
+    {
+        $activeConfig = AgentConfig::active();
+        $datasetFingerprint = [];
+
+        foreach ($this->datasetSources() as $datasetSource) {
+            $storagePath = $datasetSource['storage_path'];
+            $datasetFingerprint[] = implode('|', [
+                $storagePath,
+                $datasetSource['file_type'],
+                $datasetSource['source_label'],
+                (string) Storage::disk('public')->lastModified($storagePath),
+            ]);
+        }
+
+        $manualMeta = LocationPoint::query()
+            ->selectRaw('COUNT(*) as aggregate, MAX(updated_at) as updated_at')
+            ->first();
+
+        return implode('|', [
+            'config-id:'.($activeConfig?->getKey() ?? 'none'),
+            'config-updated:'.(string) ($activeConfig?->updated_at?->timestamp ?? 'none'),
+            'datasets:'.sha1(json_encode($datasetFingerprint) ?: '[]'),
+            'manual-count:'.(string) data_get($manualMeta, 'aggregate', '0'),
+            'manual-updated:'.(string) data_get($manualMeta, 'updated_at', 'none'),
+        ]);
     }
 
     private function loadDatasetLocations(): array
@@ -323,9 +493,7 @@ class LocationCatalogService
                 return false;
             }
 
-            $locationTags = array_map(fn ($item) => Str::lower((string) $item), (array) data_get($location, 'tags', []));
-
-            if ($tag !== '' && ! in_array($tag, $locationTags, true)) {
+            if ($tag !== '' && ! in_array($tag, (array) data_get($location, '_tags_normalized', []), true)) {
                 return false;
             }
 
@@ -333,17 +501,7 @@ class LocationCatalogService
                 return true;
             }
 
-            $searchable = [
-                (string) data_get($location, 'name', ''),
-                (string) data_get($location, 'category', ''),
-                (string) data_get($location, 'city', ''),
-                (string) data_get($location, 'address', ''),
-                (string) data_get($location, 'description', ''),
-                implode(' ', (array) data_get($location, 'tags', [])),
-                implode(' ', array_map(fn ($value) => is_scalar($value) ? (string) $value : '', (array) data_get($location, 'raw', []))),
-            ];
-
-            return Str::contains(Str::lower(implode(' ', $searchable)), $search);
+            return Str::contains((string) data_get($location, '_search_blob', ''), $search);
         }));
     }
 
@@ -423,3 +581,6 @@ class LocationCatalogService
         return array_values(array_unique($normalized));
     }
 }
+
+
+

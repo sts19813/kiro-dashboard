@@ -26,10 +26,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    Route::get('/ubicaciones', [LocationController::class, 'index'])->name('locations.index');
-    Route::post('/ubicaciones/puntos', [LocationController::class, 'store'])->name('locations.store');
-    Route::delete('/ubicaciones/puntos/{locationPoint}', [LocationController::class, 'destroy'])->name('locations.destroy');
-    Route::redirect('/mapa', '/ubicaciones');
+    Route::get('/provedores', [LocationController::class, 'index'])->name('locations.index');
+    Route::post('/provedores/puntos', [LocationController::class, 'store'])->name('locations.store');
+    Route::delete('/provedores/puntos/{locationPoint}', [LocationController::class, 'destroy'])->name('locations.destroy');
+
+    Route::redirect('/proveedores', '/provedores');
+    Route::redirect('/ubicaciones', '/provedores');
+    Route::redirect('/mapa', '/provedores');
 });
 
 require __DIR__ . '/auth.php';
