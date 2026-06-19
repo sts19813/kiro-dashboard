@@ -51,6 +51,9 @@
                             <button type="button" id="agent_chat_location_btn" class="btn btn-sm btn-light-primary mt-3">
                                 Usar mi ubicacion
                             </button>
+                            <div id="agent_chat_location_status" class="form-text mt-3">
+                                La ubicacion precisa requiere permiso del navegador y HTTPS o localhost.
+                            </div>
                         </div>
 
                         <div class="mb-0">
@@ -123,6 +126,10 @@
             const budgetInput = document.getElementById('agent_chat_budget');
             const reloadBtn = document.getElementById('agent_chat_reload_btn');
             const locationBtn = document.getElementById('agent_chat_location_btn');
+            const locationStatus = document.getElementById('agent_chat_location_status');
+            let currentLocationAccuracy = null;
+            let currentLocationLabel = null;
+            let currentLocationSource = null;
 
             function scrollToBottom() {
                 messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -229,6 +236,9 @@
                     message,
                     lat: payloadValue(latInput),
                     lng: payloadValue(lngInput),
+                    accuracy_meters: currentLocationAccuracy,
+                    location_label: currentLocationLabel,
+                    location_source: currentLocationSource,
                     budget: payloadValue(budgetInput),
                 };
 
@@ -265,24 +275,163 @@
                 }
             }
 
-            locationBtn.addEventListener('click', function () {
-                if (!navigator.geolocation) {
-                    appendMessage('assistant', 'Tu navegador no permite obtener ubicacion automaticamente.');
-                    return;
+            function setLocationStatus(message, type = 'muted') {
+                locationStatus.className = `form-text mt-3 text-${type}`;
+                locationStatus.textContent = message;
+            }
+
+            function fillLocation(lat, lng, accuracyMeters = null, sourceLabel = 'navegador', readableLabel = null) {
+                latInput.value = Number(lat).toFixed(7);
+                lngInput.value = Number(lng).toFixed(7);
+                currentLocationAccuracy = accuracyMeters;
+                currentLocationSource = sourceLabel;
+                currentLocationLabel = readableLabel;
+
+                const accuracyText = accuracyMeters
+                    ? `Precision aprox.: ${Math.round(accuracyMeters).toLocaleString()} m.`
+                    : 'Precision no informada.';
+                const labelText = readableLabel ? ` Zona detectada: ${readableLabel}.` : '';
+
+                setLocationStatus(`Ubicacion cargada por ${sourceLabel}. ${accuracyText}${labelText}`, 'success');
+            }
+
+            function geolocationErrorMessage(error) {
+                if (!window.isSecureContext && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)) {
+                    return 'El navegador bloquea ubicacion precisa porque esta pagina no esta en HTTPS o localhost.';
                 }
 
+                if (!error) {
+                    return 'El navegador no entrego la ubicacion precisa.';
+                }
+
+                if (error.code === error.PERMISSION_DENIED) {
+                    return 'Permiso denegado. Revisa permisos de ubicacion del navegador y del sistema operativo.';
+                }
+
+                if (error.code === error.POSITION_UNAVAILABLE) {
+                    return 'La ubicacion precisa no esta disponible en este equipo o red.';
+                }
+
+                if (error.code === error.TIMEOUT) {
+                    return 'La ubicacion precisa tardo demasiado en responder.';
+                }
+
+                return error.message || 'No pude obtener la ubicacion precisa.';
+            }
+
+            function getBrowserLocation() {
+                if (!navigator.geolocation) {
+                    return Promise.reject(new Error('Tu navegador no permite obtener ubicacion automaticamente.'));
+                }
+
+                return new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true,
+                        timeout: 20000,
+                        maximumAge: 0,
+                    });
+                });
+            }
+
+            async function getNetworkLocation() {
+                const providers = [
+                    {
+                        url: 'https://ipapi.co/json/',
+                        parse: (data) => ({
+                            lat: data.latitude,
+                            lng: data.longitude,
+                            label: [data.city, data.region, data.country_name].filter(Boolean).join(', '),
+                        }),
+                    },
+                    {
+                        url: 'https://ipwho.is/',
+                        parse: (data) => ({
+                            lat: data.latitude,
+                            lng: data.longitude,
+                            label: [data.city, data.region, data.country].filter(Boolean).join(', '),
+                        }),
+                    },
+                ];
+
+                for (const provider of providers) {
+                    try {
+                        const response = await fetch(provider.url, {
+                            headers: {
+                                'Accept': 'application/json',
+                            },
+                        });
+
+                        if (!response.ok) {
+                            continue;
+                        }
+
+                        const data = await response.json();
+                        const parsed = provider.parse(data);
+
+                        if (Number.isFinite(Number(parsed.lat)) && Number.isFinite(Number(parsed.lng))) {
+                            return parsed;
+                        }
+                    } catch (error) {
+                        // Try the next provider.
+                    }
+                }
+
+                return null;
+            }
+
+            locationBtn.addEventListener('click', async function () {
                 locationBtn.disabled = true;
-                navigator.geolocation.getCurrentPosition(function (position) {
-                    latInput.value = position.coords.latitude.toFixed(6);
-                    lngInput.value = position.coords.longitude.toFixed(6);
+                setLocationStatus('Solicitando ubicacion precisa al navegador...', 'muted');
+
+                try {
+                    const position = await getBrowserLocation();
+
+                    fillLocation(
+                        position.coords.latitude,
+                        position.coords.longitude,
+                        position.coords.accuracy,
+                        'navegador',
+                        'coordenadas precisas del navegador'
+                    );
+
                     locationBtn.disabled = false;
-                }, function () {
-                    appendMessage('assistant', 'No pude obtener tu ubicacion. Puedes escribir lat/lng manualmente.');
+                    return;
+                } catch (error) {
+                    const reason = geolocationErrorMessage(error);
+                    setLocationStatus(`${reason} Intentando ubicacion aproximada por red...`, 'warning');
+                }
+
+                try {
+                    const networkLocation = await getNetworkLocation();
+
+                    if (networkLocation) {
+                        fillLocation(
+                            networkLocation.lat,
+                            networkLocation.lng,
+                            25000,
+                            'red/IP',
+                            networkLocation.label || 'ubicacion aproximada por red'
+                        );
+
+                        return;
+                    }
+
+                    setLocationStatus(
+                        'No pude obtener ubicacion por navegador ni por red. Puedes escribir lat/lng manualmente.',
+                        'danger'
+                    );
+                    appendMessage('assistant', 'No pude obtener tu ubicacion automaticamente. Revisa permisos del navegador o escribe lat/lng manualmente.');
+                } finally {
                     locationBtn.disabled = false;
-                }, {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 60000,
+                }
+            });
+
+            [latInput, lngInput].forEach((input) => {
+                input.addEventListener('input', function () {
+                    currentLocationAccuracy = null;
+                    currentLocationSource = 'manual';
+                    currentLocationLabel = 'coordenadas escritas manualmente';
+                    setLocationStatus('Usando coordenadas escritas manualmente.', 'muted');
                 });
             });
 

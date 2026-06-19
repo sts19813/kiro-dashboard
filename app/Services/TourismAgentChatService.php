@@ -105,7 +105,11 @@ class TourismAgentChatService
                 'accuracy_meters' => data_get($payload, 'accuracy_meters'),
                 'budget' => data_get($payload, 'budget'),
                 'search_query' => data_get($payload, 'message'),
-                'context' => ['source' => (string) data_get($payload, 'source', 'agent_playground')],
+                'context' => [
+                    'source' => (string) data_get($payload, 'source', 'agent_playground'),
+                    'location_source' => data_get($payload, 'location_source'),
+                    'location_label' => data_get($payload, 'location_label'),
+                ],
                 'recorded_at' => now(),
             ]);
 
@@ -113,8 +117,10 @@ class TourismAgentChatService
                 'lat' => (float) $location->lat,
                 'lng' => (float) $location->lng,
                 'budget' => $location->budget !== null ? (float) $location->budget : null,
+                'accuracy_meters' => $location->accuracy_meters !== null ? (float) $location->accuracy_meters : null,
+                'label' => data_get($location->context, 'location_label'),
                 'recorded_at' => $location->recorded_at?->toISOString(),
-                'source' => 'current_message',
+                'source' => data_get($location->context, 'location_source', 'current_message'),
             ];
         }
 
@@ -131,8 +137,10 @@ class TourismAgentChatService
             'lat' => (float) $latest->lat,
             'lng' => (float) $latest->lng,
             'budget' => $latest->budget !== null ? (float) $latest->budget : null,
+            'accuracy_meters' => $latest->accuracy_meters !== null ? (float) $latest->accuracy_meters : null,
+            'label' => data_get($latest->context, 'location_label'),
             'recorded_at' => $latest->recorded_at?->toISOString(),
-            'source' => 'history',
+            'source' => data_get($latest->context, 'location_source', 'history'),
         ];
     }
 

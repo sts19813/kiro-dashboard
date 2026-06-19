@@ -25,6 +25,8 @@ class AgentChatController extends Controller
             'lat' => ['nullable', 'numeric', 'between:-90,90'],
             'lng' => ['nullable', 'numeric', 'between:-180,180'],
             'accuracy_meters' => ['nullable', 'numeric', 'min:0'],
+            'location_label' => ['nullable', 'string', 'max:255'],
+            'location_source' => ['nullable', 'string', 'max:50'],
             'budget' => ['nullable', 'numeric', 'min:0'],
         ]);
 
