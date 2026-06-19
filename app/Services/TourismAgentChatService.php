@@ -177,6 +177,7 @@ class TourismAgentChatService
                 'role' => $message->role,
                 'message' => $message->message,
                 'sent_at' => $message->sent_at?->toISOString(),
+                'catalog_plan' => (array) data_get($message->metadata, 'plan', []),
                 'catalog_locations' => array_slice((array) data_get($message->metadata, 'catalog.locations', []), 0, 8),
             ])
             ->all();
@@ -256,6 +257,7 @@ class TourismAgentChatService
         $userIntent = $fallbackIntent === 'exact_place_info'
             ? 'exact_place_info'
             : (string) data_get($decoded, 'user_intent', $fallbackIntent);
+        $decodedBudget = data_get($decoded, 'budget');
 
         return [
             'needs_recommendations' => $needsRecommendations || (bool) data_get($fallback, 'needs_recommendations', false),
@@ -264,7 +266,7 @@ class TourismAgentChatService
             'limit' => max(1, min((int) data_get($decoded, 'limit', data_get($fallback, 'limit', 5)), 10)),
             'user_intent' => Str::limit($userIntent, 120, ''),
             'missing_fields' => array_values((array) data_get($decoded, 'missing_fields', [])),
-            'budget' => data_get($decoded, 'budget'),
+            'budget' => $decodedBudget !== null ? $decodedBudget : data_get($fallback, 'budget'),
             'requested_fields' => array_values((array) data_get($decoded, 'requested_fields', data_get($fallback, 'requested_fields', []))),
             'target_names' => array_values((array) data_get($decoded, 'target_names', data_get($fallback, 'target_names', []))),
         ];
@@ -278,15 +280,27 @@ class TourismAgentChatService
         $needsExactPlaceInfo = ! empty($requestedFields);
         $targetNames = $this->targetNamesFromMessage($message);
         $recentLocations = $this->recentCatalogLocations($history);
+        $previousPlan = $this->recentCatalogPlan($history);
         $fallbackTarget = (string) data_get($recentLocations, '0.name', '');
         $needsRecommendations = Str::contains($lower, [
             'recomienda', 'recomendacion', 'recomendación', 'cerca', 'cercano', 'lugar', 'lugares',
             'restaurante', 'comer', 'cenote', 'playa', 'museo', 'hotel', 'bar', 'cafe', 'café',
             'hacienda', 'pueblo', 'itinerario', 'tour', 'actividad', 'visitar', 'que hago', 'qué hago',
             'sugerencia', 'opciones', 'plan', 'familia', 'romantico', 'romántico', 'niños', 'ninos',
+            'hospedaje', 'hospede', 'hospedar', 'hostal', 'dormir', 'noche',
         ]);
         $needsCatalog = $needsRecommendations || $needsExactPlaceInfo;
         $searchQuery = $category ?: ($needsCatalog ? Str::limit($message, 120, '') : null);
+
+        if ($this->isContinuationMessage($lower) && ! empty($previousPlan)) {
+            $previousIntent = (string) data_get($previousPlan, 'user_intent', 'recommend_places');
+            $previousQuery = (string) data_get($previousPlan, 'search_query', '');
+
+            $needsCatalog = true;
+            $needsRecommendations = $previousIntent !== 'exact_place_info' || empty($recentLocations);
+            $needsExactPlaceInfo = $previousIntent === 'exact_place_info' && ! empty($recentLocations);
+            $searchQuery = $category ?: ($previousQuery !== '' ? $previousQuery : $searchQuery);
+        }
 
         if ($needsExactPlaceInfo) {
             $searchQuery = (string) data_get($targetNames, '0', $fallbackTarget);
@@ -300,7 +314,7 @@ class TourismAgentChatService
             'limit' => 5,
             'user_intent' => $needsExactPlaceInfo ? 'exact_place_info' : ($needsRecommendations ? 'recommend_places' : 'chat'),
             'missing_fields' => $needsRecommendations && ! $location && ! $needsExactPlaceInfo ? ['ubicacion'] : [],
-            'budget' => null,
+            'budget' => $this->budgetFromMessage($lower),
             'requested_fields' => $requestedFields,
             'target_names' => $targetNames,
         ];
@@ -309,11 +323,11 @@ class TourismAgentChatService
     private function categoryFromMessage(string $message): ?string
     {
         $categories = [
+            'hotel' => ['hotel', 'hoteles', 'hospedaje', 'hospede', 'hospedar', 'hostal', 'dormir'],
             'restaurante' => ['restaurante', 'comer', 'cena', 'desayuno', 'almuerzo', 'comida'],
             'cenote' => ['cenote', 'nadar'],
             'playa' => ['playa', 'mar'],
             'museo' => ['museo', 'historia', 'cultura'],
-            'hotel' => ['hotel', 'hospedaje', 'dormir'],
             'bar' => ['bar', 'tragos', 'coctel', 'cóctel'],
             'cafe' => ['cafe', 'café', 'cafeteria', 'cafetería'],
             'hacienda' => ['hacienda'],
@@ -342,6 +356,7 @@ class TourismAgentChatService
         $limit = min((int) data_get($plan, 'limit', data_get($config, 'rag.top_k', 5)), 8);
         $query = data_get($plan, 'search_query');
         $userIntent = (string) data_get($plan, 'user_intent', '');
+        $effectiveBudget = data_get($plan, 'budget') !== null ? (float) data_get($plan, 'budget') : $budget;
 
         if ($userIntent === 'exact_place_info') {
             $locations = $this->exactInfoLocations($message, $plan, $history, $limit);
@@ -359,21 +374,31 @@ class TourismAgentChatService
             $locations = $this->recommendations->recommend(
                 (float) data_get($location, 'lat'),
                 (float) data_get($location, 'lng'),
-                $budget,
+                $effectiveBudget,
                 $query,
                 (float) data_get($plan, 'radius_km', 10),
                 $limit
             );
 
             if (empty($locations) && $query) {
-                $locations = $this->recommendations->recommend(
-                    (float) data_get($location, 'lat'),
-                    (float) data_get($location, 'lng'),
-                    $budget,
-                    null,
-                    min((float) data_get($plan, 'radius_km', 10) * 2, 100),
-                    $limit
-                );
+                foreach ([25, 50, 100] as $expandedRadius) {
+                    if ($expandedRadius <= (float) data_get($plan, 'radius_km', 10)) {
+                        continue;
+                    }
+
+                    $locations = $this->recommendations->recommend(
+                        (float) data_get($location, 'lat'),
+                        (float) data_get($location, 'lng'),
+                        $effectiveBudget,
+                        $query,
+                        $expandedRadius,
+                        $limit
+                    );
+
+                    if (! empty($locations)) {
+                        break;
+                    }
+                }
             }
 
             return [
@@ -529,7 +554,7 @@ class TourismAgentChatService
             'phone' => ['telefono', 'teléfono', 'whatsapp', 'contacto'],
             'email' => ['email', 'correo', 'mail'],
             'website' => ['web', 'sitio', 'pagina', 'página'],
-            'coordinates' => ['coordenadas', 'latitud', 'longitud', 'pin', 'mapa'],
+            'coordinates' => ['coordenadas', 'latitud', 'longitud', 'pin', 'mapa', 'maps', 'google maps'],
             'details' => ['detalle', 'detalles', 'informacion', 'información', 'datos exactos'],
         ];
 
@@ -579,6 +604,75 @@ class TourismAgentChatService
             ->all();
     }
 
+    private function recentCatalogPlan(array $history): array
+    {
+        foreach (array_reverse($history) as $item) {
+            $plan = (array) data_get($item, 'catalog_plan', []);
+
+            if ((bool) data_get($plan, 'needs_recommendations', false) && trim((string) data_get($plan, 'search_query', '')) !== '') {
+                return $plan;
+            }
+        }
+
+        return [];
+    }
+
+    private function isContinuationMessage(string $message): bool
+    {
+        $normalized = $this->normalizeSearchText($message);
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        $continuations = [
+            'si',
+            'ok',
+            'va',
+            'dale',
+            'busca',
+            'busca opciones',
+            'buscalo',
+            'buscar opciones',
+            'comparteme la informacion',
+            'comparteme informacion',
+            'mandame la informacion',
+            'mandame informacion',
+            'mandame la info',
+            'mandame los nombres',
+            'pasame los nombres',
+            'pasame la info',
+            'pasame la informacion',
+        ];
+
+        if (in_array($normalized, $continuations, true)) {
+            return true;
+        }
+
+        return mb_strlen($normalized) <= 28 && Str::contains($normalized, ['opciones', 'nombres', 'info', 'informacion']);
+    }
+
+    private function budgetFromMessage(string $message): ?float
+    {
+        $normalized = $this->normalizeSearchText($message);
+
+        if (! preg_match('/(?:presupuesto\s*)?(\d+(?:[.,]\d+)?)\s*(mil|k)?/u', $normalized, $matches)) {
+            return null;
+        }
+
+        $amount = (float) str_replace(',', '.', $matches[1]);
+
+        if ($amount <= 0) {
+            return null;
+        }
+
+        if (($matches[2] ?? '') !== '') {
+            $amount *= 1000;
+        }
+
+        return $amount;
+    }
+
     private function ordinalIndexFromMessage(string $message): ?int
     {
         $text = $this->normalizeSearchText($message);
@@ -615,6 +709,17 @@ class TourismAgentChatService
         return trim(preg_replace('/\s+/', ' ', $normalized) ?: '');
     }
 
+    private function mapsUrl(mixed $lat, mixed $lng, string $name): string
+    {
+        if ($lat === null || $lng === null || $lat === '' || $lng === '') {
+            return '';
+        }
+
+        $query = trim($lat.','.$lng.' '.$name);
+
+        return 'https://www.google.com/maps/search/?api=1&query='.rawurlencode($query);
+    }
+
     private function compactLocations(array $locations): array
     {
         return array_map(fn (array $location) => [
@@ -626,6 +731,7 @@ class TourismAgentChatService
             'phone' => (string) data_get($location, 'phone', ''),
             'email' => (string) data_get($location, 'email', ''),
             'website' => (string) data_get($location, 'website', ''),
+            'maps_url' => $this->mapsUrl(data_get($location, 'lat'), data_get($location, 'lng'), (string) data_get($location, 'name', '')),
             'description' => (string) data_get($location, 'description', ''),
             'lat' => data_get($location, 'lat'),
             'lng' => data_get($location, 'lng'),
@@ -666,11 +772,14 @@ class TourismAgentChatService
         return implode("\n", array_filter([
             'Eres un asistente IA experto en turismo de Yucatan. Tu trabajo es entender al usuario, recordar el contexto reciente y recomendar con criterio.',
             'Responde en espanol claro, natural y util. Formato ideal para WhatsApp: breve, directo y con 1 pregunta de seguimiento si falta informacion importante.',
+            'No te presentes como Kiro en cada respuesta. Solo saluda o di quien eres si el usuario inicia conversacion o pregunta quien eres.',
             'No inventes lugares, telefonos, sitios web, precios, horarios ni distancias. Si se consulto catalogo, basa las recomendaciones concretas solo en esos lugares.',
             'Si el usuario pide lugares segun su ubicacion y no hay ubicacion conocida, pide que comparta ubicacion o indique municipio/zona.',
+            'Si catalog_context.locations trae candidatos, responde con opciones concretas de esa lista; no preguntes si quieres que busque otra vez.',
             'Si hay ubicacion y lugares candidatos, prioriza cercania, necesidad del usuario, presupuesto y variedad. Explica por que recomiendas cada lugar en una frase.',
             'Si user_intent es exact_place_info, responde con los campos reales disponibles en catalog_context.locations: direccion, telefono, email, web, coordenadas o descripcion. No digas que no tienes la direccion si catalog_context.locations trae address.',
-            'Si el usuario pregunta por la direccion exacta de un lugar encontrado, da la direccion textual exacta y, si existen, ciudad, coordenadas y contacto. Si el campo address esta vacio, dilo claramente y ofrece las coordenadas registradas.',
+            'Si el usuario pregunta por la direccion exacta o pin de un lugar encontrado, da la direccion textual exacta y maps_url cuando exista. Si el campo address esta vacio, dilo claramente y ofrece las coordenadas registradas.',
+            'Si catalog_context.locations esta vacio, no inventes nombres. Di que no hay candidatos en la base para esos filtros y propone una ampliacion concreta de zona, radio o categoria.',
             'Si la pregunta no requiere base de datos, conversa normalmente como guia turistico de Yucatan.',
             "Tono configurado: {$tone}. Extension configurada: {$responseMode}.",
             $customPrompt !== '' ? "Instrucciones adicionales del administrador:\n{$customPrompt}" : null,

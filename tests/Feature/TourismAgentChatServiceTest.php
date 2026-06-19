@@ -152,4 +152,78 @@ class TourismAgentChatServiceTest extends TestCase
         $this->assertSame('AGUANTINTA', data_get($response, 'catalog.locations.0.name'));
         $this->assertStringContainsString('AGUANTINTA', $response['reply']);
     }
+
+    public function test_hotel_recommendation_uses_lodging_candidates_from_catalog(): void
+    {
+        Cache::flush();
+
+        LocationPoint::query()->create([
+            'name' => 'RESTAURANTE PEGADO',
+            'category' => 'restaurante',
+            'city' => 'Mérida',
+            'address' => '60 100, CENTRO, 97000, Mérida, Yucatán, México',
+            'description' => 'Restaurante muy cercano',
+            'lat' => 20.982,
+            'lng' => -89.620,
+            'tags' => ['comida', 'restaurante', 'Mérida'],
+            'metadata' => ['Giro' => 'Hotelería y Restaurantes'],
+            'source' => 'test',
+            'is_active' => true,
+        ]);
+
+        LocationPoint::query()->create([
+            'name' => 'HOTEL CERCANO',
+            'category' => 'hotel',
+            'city' => 'Mérida',
+            'address' => '62 200, CENTRO, 97000, Mérida, Yucatán, México',
+            'description' => 'Hospedaje en el centro',
+            'lat' => 20.986,
+            'lng' => -89.624,
+            'tags' => ['hospedaje', 'hotel', 'Mérida'],
+            'source' => 'test',
+            'is_active' => true,
+        ]);
+
+        $this->mock(OpenAiResponseClient::class, function (MockInterface $mock) {
+            $mock->shouldReceive('createText')
+                ->once()
+                ->andReturn(json_encode([
+                    'needs_recommendations' => true,
+                    'search_query' => 'hotel',
+                    'radius_km' => 10,
+                    'limit' => 5,
+                    'user_intent' => 'recommend_places',
+                    'missing_fields' => [],
+                    'budget' => 1000,
+                    'requested_fields' => ['address'],
+                    'target_names' => [],
+                ]));
+
+            $mock->shouldReceive('createText')
+                ->once()
+                ->withArgs(function (string $instructions, string $input): bool {
+                    $payload = json_decode($input, true);
+
+                    $this->assertSame('hotel', data_get($payload, 'catalog_context.locations.0.category'));
+                    $this->assertSame('HOTEL CERCANO', data_get($payload, 'catalog_context.locations.0.name'));
+                    $this->assertNotContains(
+                        'RESTAURANTE PEGADO',
+                        collect(data_get($payload, 'catalog_context.locations', []))->pluck('name')->all()
+                    );
+
+                    return true;
+                })
+                ->andReturn('Te recomiendo HOTEL CERCANO. Dirección: 62 200, CENTRO, 97000, Mérida, Yucatán, México.');
+        });
+
+        $response = app(TourismAgentChatService::class)->reply([
+            'phone' => '+529992222222',
+            'message' => 'algún lugar para hospedarme cerca con presupuesto mil la noche',
+            'lat' => 20.982,
+            'lng' => -89.620,
+        ]);
+
+        $this->assertSame('HOTEL CERCANO', data_get($response, 'catalog.locations.0.name'));
+        $this->assertStringContainsString('HOTEL CERCANO', $response['reply']);
+    }
 }
