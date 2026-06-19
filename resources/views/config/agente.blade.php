@@ -9,6 +9,11 @@
                 <h1 class="fw-bold mb-1">Configuracion del Agente</h1>
                 <div class="text-muted">Administra los parametros principales del chatbot.</div>
             </div>
+            <div>
+                <a href="{{ route('settings.agent.chat') }}" class="btn btn-light-primary">
+                    Probar chat IA
+                </a>
+            </div>
         </div>
 
         @if (session('status') === 'agent-config-saved')

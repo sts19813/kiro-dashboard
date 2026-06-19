@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AgentChatController;
 use App\Http\Controllers\AgentConfigController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LocationController;
@@ -27,6 +28,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     })->name('settings.users');
     Route::get('/config/agente', [AgentConfigController::class, 'index'])->name('settings.agent');
     Route::post('/config/agente', [AgentConfigController::class, 'store'])->name('settings.agent.store');
+    Route::get('/config/agente/chat', [AgentChatController::class, 'index'])->name('settings.agent.chat');
+    Route::get('/config/agente/chat/history', [AgentChatController::class, 'history'])->name('settings.agent.chat.history');
+    Route::post('/config/agente/chat', [AgentChatController::class, 'send'])->name('settings.agent.chat.send');
 
     Route::get('/profile', [ProfileController::class, 'show'])->name('profile.index');
     Route::get('/profile/edit', [ProfileController::class, 'edit'])->name('profile.edit');
