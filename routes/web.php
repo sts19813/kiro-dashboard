@@ -1,23 +1,30 @@
 <?php
 
-use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\AgentConfigController;
+use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\ProfileController;
+use App\Models\User;
 use Illuminate\Support\Facades\Route;
 
 Route::get('lang/{locale}', [LanguageController::class, 'switch'])->name('lang.switch');
 
 Route::get('/', function () {
-    return view('welcome');
-})->middleware(['auth', 'verified'])->name('home');
+    return auth()->check()
+        ? redirect()->route('dashboard')
+        : view('auth.login');
+})->name('home');
 
 Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::view('/config/usuarios', 'pages.config.users')->name('settings.users');
+    Route::get('/config/usuarios', function () {
+        return view('pages.config.users', [
+            'users' => User::latest()->paginate(10),
+        ]);
+    })->name('settings.users');
     Route::get('/config/agente', [AgentConfigController::class, 'index'])->name('settings.agent');
     Route::post('/config/agente', [AgentConfigController::class, 'store'])->name('settings.agent.store');
 
@@ -35,4 +42,4 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::redirect('/mapa', '/provedores');
 });
 
-require __DIR__ . '/auth.php';
+require __DIR__.'/auth.php';

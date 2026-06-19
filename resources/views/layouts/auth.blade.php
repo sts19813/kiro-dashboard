@@ -45,13 +45,13 @@
         <div class="d-flex flex-column flex-lg-row flex-column-fluid">
             <div class="d-flex flex-lg-row-fluid">
                 <div class="d-flex flex-column flex-center pb-0 pb-lg-10 p-10 w-100">
-                    <img class="theme-light-show mx-auto mw-100 w-150px w-lg-300px mb-10 mb-lg-20" src="assets/media/auth/agency.png" alt="Auth Illustration" />
-                    <img class="theme-dark-show mx-auto mw-100 w-150px w-lg-300px mb-10 mb-lg-20" src="assets/media/auth/agency-dark.png" alt="Auth Illustration" />
+                    <img class="theme-light-show mx-auto mw-100 w-150px w-lg-300px mb-10 mb-lg-20" src="assets/media/auth/agency.png" alt="Ilustración de autenticación" />
+                    <img class="theme-dark-show mx-auto mw-100 w-150px w-lg-300px mb-10 mb-lg-20" src="assets/media/auth/agency-dark.png" alt="Ilustración de autenticación" />
 
-                    <h1 class="text-gray-800 fs-2qx fw-bold text-center mb-7">Fast, Efficient and Productive</h1>
+                    <h1 class="text-gray-800 fs-2qx fw-bold text-center mb-7">Kiro Dashboard</h1>
                     <div class="text-gray-600 fs-base text-center fw-semibold">
                         Administra tu dashboard con una experiencia visual limpia, segura y moderna.
-                        <br />Tu autenticacion ahora usa layout Metronic Overlay compartido.
+                        <br />Acceso rápido con correo o Google.
                     </div>
                 </div>
             </div>
@@ -65,9 +65,8 @@
 
                         <div class="d-flex flex-stack">
                             <div class="d-flex fw-semibold text-primary fs-base gap-5">
-                                <a href="https://keenthemes.com" target="_blank" rel="noopener">Terms</a>
-                                <a href="https://keenthemes.com/metronic" target="_blank" rel="noopener">Plans</a>
-                                <a href="https://keenthemes.com/support" target="_blank" rel="noopener">Contact Us</a>
+                                <a href="{{ route('login') }}">Iniciar sesión</a>
+                                <a href="{{ route('register') }}">Crear cuenta</a>
                             </div>
                         </div>
                     </div>
@@ -79,6 +78,38 @@
     <script>var hostUrl = "assets/";</script>
     <script src="assets/plugins/global/plugins.bundle.js"></script>
     <script src="assets/js/scripts.bundle.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            if (!window.Swal) {
+                return;
+            }
+
+            var Toast = Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 4200,
+                timerProgressBar: true,
+                customClass: {
+                    popup: 'shadow-sm',
+                },
+            });
+
+            @if (session('status'))
+                Toast.fire({
+                    icon: 'success',
+                    title: @json(session('status')),
+                });
+            @endif
+
+            @if ($errors->any())
+                Toast.fire({
+                    icon: 'error',
+                    title: @json($errors->first()),
+                });
+            @endif
+        });
+    </script>
 
     @stack('scripts')
 </body>

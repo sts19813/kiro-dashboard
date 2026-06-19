@@ -4,69 +4,77 @@
 
 @section('content')
     <div class="container-fluid">
-        <div class="card card-flush">
-            <div class="card-header align-items-center py-6 gap-2 gap-md-5">
-                <div class="card-title">
-                    <h3 class="fw-bold">{{ __('Editar perfil') }}</h3>
-                    <div class="text-muted fs-7">{{ __('Actualiza tus datos, tu foto de perfil y la seguridad de tu cuenta.') }}</div>
-                </div>
-                <div class="card-toolbar">
-                    <a href="{{ route('profile.index') }}" class="btn btn-light">{{ __('Volver al perfil') }}</a>
-                </div>
+        <div class="d-flex flex-wrap flex-stack gap-4 mb-8">
+            <div>
+                <h1 class="fw-bold text-gray-900 mb-1">Editar perfil</h1>
+                <div class="text-muted">Actualiza tu foto, nombre, correo y contraseña.</div>
             </div>
-            <div class="card-body py-6">
-                <div class="row gx-10 gy-10">
-                    <div class="col-12 col-xl-4">
-                        <div class="card card-flush h-100">
-                            <div class="card-body text-center py-10">
-                                <div class="symbol symbol-120px symbol-circle mx-auto mb-6">
-                                    @if ($user->profile_image)
-                                        <img src="{{ asset('storage/' . $user->profile_image) }}" alt="{{ $user->name }}" class="symbol-label" style="object-fit: cover;">
-                                    @else
-                                        <div class="symbol-label fw-bold d-flex justify-content-center align-items-center bg-primary text-white fs-2">
-                                            {{ strtoupper(substr($user->name, 0, 1)) }}
-                                        </div>
-                                    @endif
-                                </div>
-                                <h3 class="fw-bold mb-1">{{ $user->name }}</h3>
-                                <div class="text-muted mb-5">{{ $user->email }}</div>
-                                <div class="d-grid gap-2">
-                                    <a href="{{ route('profile.index') }}" class="btn btn-light btn-sm">{{ __('Ver perfil') }}</a>
-                                </div>
+            <a href="{{ route('profile.index') }}" class="btn btn-light">
+                <i class="ki-outline ki-arrow-left fs-2"></i>
+                Volver
+            </a>
+        </div>
+
+        <div class="row g-8">
+            <div class="col-12 col-xl-4">
+                <div class="card card-flush h-100">
+                    <div class="card-body text-center py-10">
+                        <div class="symbol symbol-125px symbol-circle mx-auto mb-6">
+                            @if ($user->profile_image || $user->google_avatar_url)
+                                <img src="{{ $user->avatarUrl() }}" alt="{{ $user->name }}" style="object-fit: cover;">
+                            @else
+                                <div class="symbol-label bg-light-primary text-primary fw-bold fs-1">{{ $user->initials() }}</div>
+                            @endif
+                        </div>
+                        <h2 class="fw-bold mb-1">{{ $user->name }}</h2>
+                        <div class="text-muted mb-6">{{ $user->email }}</div>
+                        <div class="notice d-flex bg-light-primary rounded border-primary border border-dashed p-5 text-start">
+                            <i class="ki-outline ki-information-5 fs-2tx text-primary me-4"></i>
+                            <div class="text-gray-700 fw-semibold fs-7">
+                                La foto de perfil se puede cambiar desde el formulario de información.
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-xl-8">
-                        <div class="row gy-10">
-                            <div class="col-12">
-                                <div class="card card-flush h-100">
-                                    <div class="card-header py-5">
-                                        <h3 class="fw-bold">{{ __('Información de perfil') }}</h3>
-                                    </div>
-                                    <div class="card-body py-5">
-                                        @include('profile.partials.update-profile-information-form')
-                                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-xl-8">
+                <div class="row g-8">
+                    <div class="col-12">
+                        <div class="card card-flush">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <h3 class="fw-bold mb-0">Información personal</h3>
                                 </div>
                             </div>
-                            <div class="col-12 col-lg-6">
-                                <div class="card card-flush h-100">
-                                    <div class="card-header py-5">
-                                        <h3 class="fw-bold">{{ __('Seguridad') }}</h3>
-                                    </div>
-                                    <div class="card-body py-5">
-                                        @include('profile.partials.update-password-form')
-                                    </div>
+                            <div class="card-body">
+                                @include('profile.partials.update-profile-information-form')
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="card card-flush">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <h3 class="fw-bold mb-0">Cambiar contraseña</h3>
                                 </div>
                             </div>
-                            <div class="col-12 col-lg-6">
-                                <div class="card card-flush h-100">
-                                    <div class="card-header py-5">
-                                        <h3 class="fw-bold text-danger">{{ __('Eliminar cuenta') }}</h3>
-                                    </div>
-                                    <div class="card-body py-5">
-                                        @include('profile.partials.delete-user-form')
-                                    </div>
+                            <div class="card-body">
+                                @include('profile.partials.update-password-form')
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="card card-flush border border-danger border-dashed">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <h3 class="fw-bold text-danger mb-0">Eliminar cuenta</h3>
                                 </div>
+                            </div>
+                            <div class="card-body">
+                                @include('profile.partials.delete-user-form')
                             </div>
                         </div>
                     </div>

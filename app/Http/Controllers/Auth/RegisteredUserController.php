@@ -33,18 +33,12 @@ class RegisteredUserController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
-            'profile_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
-
-        if ($request->hasFile('profile_image')) {
-            $validated['profile_image'] = $request->file('profile_image')->store('profile-images', 'public');
-        }
 
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
-            'profile_image' => $validated['profile_image'] ?? null,
             'password' => Hash::make($validated['password']),
         ]);
 
@@ -52,6 +46,6 @@ class RegisteredUserController extends Controller
 
         Auth::login($user);
 
-        return redirect()->intended('/');
+        return redirect()->intended(route('dashboard'));
     }
 }

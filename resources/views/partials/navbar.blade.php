@@ -5,8 +5,8 @@
     </div>
 
     @php
-        $name = Auth::user()->name;
-        $initials = collect(explode(' ', $name))->map(fn($w) => mb_substr($w, 0, 1))->join('');
+        $currentUser = Auth::user();
+        $initials = $currentUser->initials();
     @endphp
     <!--begin::Notifications-->
     <div class="app-navbar-item ms-2 ms-lg-6">
@@ -19,9 +19,9 @@
                 data-kt-menu-attach="parent"
                 data-kt-menu-placement="bottom-end">
 
-                @if (Auth::user()->profile_image)
-                    <img src="{{ asset('storage/' . Auth::user()->profile_image) }}" 
-                        alt="user"
+                @if ($currentUser->profile_image || $currentUser->google_avatar_url)
+                    <img src="{{ $currentUser->avatarUrl() }}"
+                        alt="Foto de perfil"
                         class="symbol-label"
                         style="object-fit: cover;">
                 @else
@@ -40,8 +40,8 @@
                 <div class="menu-item px-3">
                     <div class="menu-content d-flex align-items-center px-3">
                        <div class="symbol symbol-50px me-5">
-                            @if (Auth::user()->profile_image)
-                                <img src="{{ asset('storage/' . Auth::user()->profile_image) }}"
+                            @if ($currentUser->profile_image || $currentUser->google_avatar_url)
+                                <img src="{{ $currentUser->avatarUrl() }}"
                                     alt="Foto de perfil"
                                     class="symbol-label"
                                     style="object-fit: cover;">
@@ -57,17 +57,12 @@
                         <!--begin::Username-->
                         <div class="d-flex flex-column">
                             <div class="fw-bold d-flex align-items-center fs-5">
-                                {{ Auth::user()->name }}
-
-                                @if(Auth::user()->is_admin)
-                                    <span
-                                        class="badge badge-light-success fw-bold fs-8 px-2 py-1 ms-2">{{ __('messages.admin_badge') }}</span>
-                                @endif
+                                {{ $currentUser->name }}
                             </div>
 
-                            <a href="mailto:{{ Auth::user()->email }}"
+                            <a href="mailto:{{ $currentUser->email }}"
                                 class="fw-semibold text-muted text-hover-primary fs-7">
-                                {{ Auth::user()->email }}
+                                {{ $currentUser->email }}
                             </a>
                         </div>
                         <!--end::Username-->
@@ -146,8 +141,8 @@
                             @php
                                 $currentLocale = app()->getLocale();
                                 $currentLangName = $currentLocale === 'en'
-                                    ? __('messages.language_english')
-                                    : __('messages.language_spanish');
+                                    ? 'Inglés'
+                                    : 'Español';
                                 $currentFlag = $currentLocale === 'en'
                                     ? 'assets/media/flags/united-states.svg'
                                     : 'assets/media/flags/mexico.svg';
@@ -164,7 +159,7 @@
                     <!--begin::Menu sub-->
                     <div class="menu-sub menu-sub-dropdown w-175px py-4">
 
-                        <!-- English -->
+                        <!-- Inglés -->
                         <div class="menu-item px-3">
                             <a href="{{ route('lang.switch', 'en') }}"
                                 class="menu-link d-flex px-5 {{ $currentLocale == 'en' ? 'active' : '' }}">
@@ -172,7 +167,7 @@
                                     <img class="rounded-1" src="{{ asset('assets/media/flags/united-states.svg') }}"
                                         alt="" />
                                 </span>
-                                English
+                                Inglés
                             </a>
                         </div>
 

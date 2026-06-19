@@ -81,7 +81,8 @@
                 </div>
 
                 <div class="menu-item">
-                    <a href="{{ route('settings.users') }}" class="menu-link">
+                    <a href="{{ route('settings.users') }}"
+                        class="menu-link {{ request()->is('config/usuarios*') ? 'active' : '' }}">
                         <span class="menu-icon">
                             <i class="ki-outline ki-profile-user fs-2"></i>
                         </span>

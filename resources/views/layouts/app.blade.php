@@ -1,22 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 
 <head>
 	<meta charset="utf-8" />
 	<title>@yield('title', 'Dashboard')</title>
 
 	<!-- Meta -->
-	<meta name="description"
-		content="The most advanced Bootstrap 5 Admin Theme with 40 unique prebuilt layouts on Themeforest trusted by 100,000 beginners and professionals." />
-	<meta name="keywords"
-		content="metronic, bootstrap, bootstrap 5, admin themes, web design, web development, free templates" />
+	<meta name="description" content="Panel administrativo de Kiro Dashboard." />
+	<meta name="keywords" content="dashboard, administración, kiro" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<meta property="og:locale" content="en_US" />
+	<meta property="og:locale" content="es_MX" />
 	<meta property="og:type" content="article" />
-	<meta property="og:title" content="Metronic - The World's #1 Selling Bootstrap Admin Template" />
-	<meta property="og:url" content="https://keenthemes.com/metronic" />
-	<meta property="og:site_name" content="Metronic by Keenthemes" />
-	<link rel="canonical" href="https://preview.keenthemes.com/metronic8" />
+	<meta property="og:title" content="Kiro Dashboard" />
+	<meta property="og:url" content="{{ config('app.url') }}" />
+	<meta property="og:site_name" content="Kiro Dashboard" />
 	<link rel="shortcut icon" href="{{ asset('assets/media/logos/favicon.ico') }}" />
 	<meta name="csrf-token" content="{{ csrf_token() }}">
 	<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
@@ -178,6 +175,38 @@
 
 	<!-- Select2 -->
 	<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+	<script>
+		document.addEventListener('DOMContentLoaded', function () {
+			if (!window.Swal) {
+				return;
+			}
+
+			var Toast = Swal.mixin({
+				toast: true,
+				position: 'top-end',
+				showConfirmButton: false,
+				timer: 4200,
+				timerProgressBar: true,
+				customClass: {
+					popup: 'shadow-sm',
+				},
+			});
+
+			@if (session('status'))
+				Toast.fire({
+					icon: 'success',
+					title: @json(session('status')),
+				});
+			@endif
+
+			@if ($errors->any())
+				Toast.fire({
+					icon: 'error',
+					title: @json($errors->first()),
+				});
+			@endif
+		});
+	</script>
 
 	<!-- Para cargar scripts adicionales desde otras vistas -->
 	@stack('scripts')
