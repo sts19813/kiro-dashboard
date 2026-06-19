@@ -38,7 +38,7 @@ class TourismAgentChatService
 
         $history = $this->recentHistory($user, (int) data_get($config, 'memory.max_messages', 15));
         $plan = $this->buildPlan($message, $history, $user, $location, $budget, $config);
-        $catalogContext = $this->catalogContext($plan, $location, $budget, $config);
+        $catalogContext = $this->catalogContext($plan, $location, $budget, $config, $history, $message);
         $answer = $this->generateAnswer($message, $history, $user, $location, $budget, $plan, $catalogContext, $config);
 
         $assistantMessage = $user->chatMessages()->create([
@@ -51,6 +51,7 @@ class TourismAgentChatService
                     'consulted' => (bool) data_get($catalogContext, 'consulted', false),
                     'basis' => (string) data_get($catalogContext, 'basis', 'none'),
                     'count' => count((array) data_get($catalogContext, 'locations', [])),
+                    'locations' => (array) data_get($catalogContext, 'locations', []),
                 ],
                 'user_message_id' => $userMessage->id,
             ],
@@ -176,13 +177,14 @@ class TourismAgentChatService
                 'role' => $message->role,
                 'message' => $message->message,
                 'sent_at' => $message->sent_at?->toISOString(),
+                'catalog_locations' => array_slice((array) data_get($message->metadata, 'catalog.locations', []), 0, 8),
             ])
             ->all();
     }
 
     private function buildPlan(string $message, array $history, TourismUser $user, ?array $location, ?float $budget, array $config): array
     {
-        $heuristic = $this->heuristicPlan($message, $location);
+        $heuristic = $this->heuristicPlan($message, $history, $location);
 
         if (! (bool) data_get($heuristic, 'needs_recommendations', false)) {
             return $heuristic;
@@ -212,10 +214,12 @@ class TourismAgentChatService
         return implode("\n", [
             'Eres un clasificador de intencion para un agente turistico de Yucatan.',
             'Responde SOLO un objeto JSON valido.',
-            'Decide si hace falta consultar una base de datos de lugares. Consultala solo si el usuario pide recomendaciones, lugares cercanos, restaurantes, actividades, rutas, hoteles, cenotes, playas, museos, bares, cafes, compras o un itinerario con lugares concretos.',
+            'Decide si hace falta consultar una base de datos de lugares. Consultala si el usuario pide recomendaciones, lugares cercanos, restaurantes, actividades, rutas, hoteles, cenotes, playas, museos, bares, cafes, compras, un itinerario con lugares concretos, o datos exactos de un lugar ya mencionado.',
+            'Datos exactos incluye direccion, domicilio, ubicacion, pin, coordenadas, telefono, email, web, contacto o detalle de un proveedor/lugar.',
             'No consultes la base para saludos, aclaraciones, conversacion general, cambios de tono o preguntas que puedan responderse sin lugares concretos.',
-            'Campos requeridos: needs_recommendations boolean, search_query string|null, radius_km number, limit number, user_intent string, missing_fields array, budget number|null.',
+            'Campos requeridos: needs_recommendations boolean, search_query string|null, radius_km number, limit number, user_intent string, missing_fields array, budget number|null, requested_fields array, target_names array.',
             'search_query debe ser breve: categoria, ciudad, necesidad o tipo de lugar; nunca copies todo el mensaje si no hace falta.',
+            'Si piden datos exactos de un lugar, user_intent debe ser exact_place_info y search_query debe ser el nombre del lugar si aparece.',
         ]);
     }
 
@@ -248,37 +252,57 @@ class TourismAgentChatService
 
         $needsRecommendations = (bool) data_get($decoded, 'needs_recommendations', false);
         $searchQuery = trim((string) data_get($decoded, 'search_query', ''));
+        $fallbackIntent = (string) data_get($fallback, 'user_intent', 'chat');
+        $userIntent = $fallbackIntent === 'exact_place_info'
+            ? 'exact_place_info'
+            : (string) data_get($decoded, 'user_intent', $fallbackIntent);
 
         return [
             'needs_recommendations' => $needsRecommendations || (bool) data_get($fallback, 'needs_recommendations', false),
             'search_query' => $searchQuery !== '' ? Str::limit($searchQuery, 120, '') : data_get($fallback, 'search_query'),
             'radius_km' => max(0.5, min((float) data_get($decoded, 'radius_km', data_get($fallback, 'radius_km', 10)), 100)),
             'limit' => max(1, min((int) data_get($decoded, 'limit', data_get($fallback, 'limit', 5)), 10)),
-            'user_intent' => Str::limit((string) data_get($decoded, 'user_intent', data_get($fallback, 'user_intent', 'chat')), 120, ''),
+            'user_intent' => Str::limit($userIntent, 120, ''),
             'missing_fields' => array_values((array) data_get($decoded, 'missing_fields', [])),
             'budget' => data_get($decoded, 'budget'),
+            'requested_fields' => array_values((array) data_get($decoded, 'requested_fields', data_get($fallback, 'requested_fields', []))),
+            'target_names' => array_values((array) data_get($decoded, 'target_names', data_get($fallback, 'target_names', []))),
         ];
     }
 
-    private function heuristicPlan(string $message, ?array $location): array
+    private function heuristicPlan(string $message, array $history, ?array $location): array
     {
         $lower = Str::lower($message);
         $category = $this->categoryFromMessage($lower);
+        $requestedFields = $this->requestedFieldsFromMessage($lower);
+        $needsExactPlaceInfo = ! empty($requestedFields);
+        $targetNames = $this->targetNamesFromMessage($message);
+        $recentLocations = $this->recentCatalogLocations($history);
+        $fallbackTarget = (string) data_get($recentLocations, '0.name', '');
         $needsRecommendations = Str::contains($lower, [
             'recomienda', 'recomendacion', 'recomendación', 'cerca', 'cercano', 'lugar', 'lugares',
             'restaurante', 'comer', 'cenote', 'playa', 'museo', 'hotel', 'bar', 'cafe', 'café',
             'hacienda', 'pueblo', 'itinerario', 'tour', 'actividad', 'visitar', 'que hago', 'qué hago',
             'sugerencia', 'opciones', 'plan', 'familia', 'romantico', 'romántico', 'niños', 'ninos',
         ]);
+        $needsCatalog = $needsRecommendations || $needsExactPlaceInfo;
+        $searchQuery = $category ?: ($needsCatalog ? Str::limit($message, 120, '') : null);
+
+        if ($needsExactPlaceInfo) {
+            $searchQuery = (string) data_get($targetNames, '0', $fallbackTarget);
+            $searchQuery = $searchQuery !== '' ? Str::limit($searchQuery, 120, '') : Str::limit($message, 120, '');
+        }
 
         return [
-            'needs_recommendations' => $needsRecommendations,
-            'search_query' => $category ?: ($needsRecommendations ? Str::limit($message, 120, '') : null),
+            'needs_recommendations' => $needsCatalog,
+            'search_query' => $searchQuery,
             'radius_km' => $location ? 10 : 25,
             'limit' => 5,
-            'user_intent' => $needsRecommendations ? 'recommend_places' : 'chat',
-            'missing_fields' => $needsRecommendations && ! $location ? ['ubicacion'] : [],
+            'user_intent' => $needsExactPlaceInfo ? 'exact_place_info' : ($needsRecommendations ? 'recommend_places' : 'chat'),
+            'missing_fields' => $needsRecommendations && ! $location && ! $needsExactPlaceInfo ? ['ubicacion'] : [],
             'budget' => null,
+            'requested_fields' => $requestedFields,
+            'target_names' => $targetNames,
         ];
     }
 
@@ -305,7 +329,7 @@ class TourismAgentChatService
         return null;
     }
 
-    private function catalogContext(array $plan, ?array $location, ?float $budget, array $config): array
+    private function catalogContext(array $plan, ?array $location, ?float $budget, array $config, array $history, string $message): array
     {
         if (! (bool) data_get($plan, 'needs_recommendations', false)) {
             return [
@@ -317,6 +341,19 @@ class TourismAgentChatService
 
         $limit = min((int) data_get($plan, 'limit', data_get($config, 'rag.top_k', 5)), 8);
         $query = data_get($plan, 'search_query');
+        $userIntent = (string) data_get($plan, 'user_intent', '');
+
+        if ($userIntent === 'exact_place_info') {
+            $locations = $this->exactInfoLocations($message, $plan, $history, $limit);
+
+            return [
+                'consulted' => true,
+                'basis' => ! empty($locations) ? 'exact_lookup' : 'exact_lookup_empty',
+                'query' => $query,
+                'requested_fields' => array_values((array) data_get($plan, 'requested_fields', [])),
+                'locations' => $this->compactLocations($locations),
+            ];
+        }
 
         if ($location) {
             $locations = $this->recommendations->recommend(
@@ -365,7 +402,7 @@ class TourismAgentChatService
 
     private function textSearch(string $query, int $limit): array
     {
-        $terms = collect(preg_split('/\s+/', Str::lower($query)) ?: [])
+        $terms = collect(preg_split('/\s+/', $this->normalizeSearchText($query)) ?: [])
             ->map(fn ($term) => trim($term, " \t\n\r\0\x0B.,;:!?()[]{}\"'"))
             ->filter(fn ($term) => mb_strlen($term) >= 4)
             ->unique()
@@ -379,7 +416,7 @@ class TourismAgentChatService
         $scored = [];
 
         foreach ($this->catalog->getLocations() as $location) {
-            $blob = Str::lower(implode(' ', [
+            $blob = $this->normalizeSearchText(implode(' ', [
                 data_get($location, 'name'),
                 data_get($location, 'category'),
                 data_get($location, 'city'),
@@ -405,6 +442,179 @@ class TourismAgentChatService
         return array_map(fn (array $item) => $item['location'], array_slice($scored, 0, $limit));
     }
 
+    private function exactInfoLocations(string $message, array $plan, array $history, int $limit): array
+    {
+        $locations = $this->locationsMentionedInMessage($message, $limit);
+
+        if (! empty($locations)) {
+            return $locations;
+        }
+
+        $recentLocations = $this->recentCatalogLocations($history);
+        $ordinalIndex = $this->ordinalIndexFromMessage($message);
+
+        if ($ordinalIndex !== null && isset($recentLocations[$ordinalIndex])) {
+            return [$recentLocations[$ordinalIndex]];
+        }
+
+        $query = trim((string) data_get($plan, 'search_query', ''));
+
+        if ($query !== '') {
+            $locations = $this->textSearch($query, $limit);
+
+            if (! empty($locations)) {
+                return $locations;
+            }
+        }
+
+        return array_slice($recentLocations, 0, $limit);
+    }
+
+    private function locationsMentionedInMessage(string $message, int $limit): array
+    {
+        $messageText = $this->normalizeSearchText($message);
+        $scored = [];
+
+        if ($messageText === '') {
+            return [];
+        }
+
+        foreach ($this->catalog->getLocations() as $location) {
+            $name = trim((string) data_get($location, 'name', ''));
+            $nameText = $this->normalizeSearchText($name);
+
+            if ($nameText === '' || mb_strlen($nameText) < 4) {
+                continue;
+            }
+
+            if (Str::contains($messageText, $nameText)) {
+                $scored[] = ['score' => 1000 + mb_strlen($nameText), 'location' => $location];
+
+                continue;
+            }
+
+            $nameTerms = collect(explode(' ', $nameText))
+                ->filter(fn ($term) => mb_strlen($term) >= 4)
+                ->values()
+                ->all();
+
+            if (empty($nameTerms)) {
+                continue;
+            }
+
+            $matchedTerms = 0;
+
+            foreach ($nameTerms as $term) {
+                if (Str::contains($messageText, $term)) {
+                    $matchedTerms++;
+                }
+            }
+
+            if ($matchedTerms === count($nameTerms)) {
+                $scored[] = ['score' => 500 + $matchedTerms, 'location' => $location];
+            }
+        }
+
+        usort($scored, fn (array $a, array $b) => $b['score'] <=> $a['score']);
+
+        return array_map(fn (array $item) => $item['location'], array_slice($scored, 0, $limit));
+    }
+
+    private function requestedFieldsFromMessage(string $message): array
+    {
+        $fields = [];
+
+        $map = [
+            'address' => ['direccion', 'dirección', 'domicilio', 'ubicacion', 'ubicación', 'donde queda', 'dónde queda', 'como llego', 'cómo llego'],
+            'phone' => ['telefono', 'teléfono', 'whatsapp', 'contacto'],
+            'email' => ['email', 'correo', 'mail'],
+            'website' => ['web', 'sitio', 'pagina', 'página'],
+            'coordinates' => ['coordenadas', 'latitud', 'longitud', 'pin', 'mapa'],
+            'details' => ['detalle', 'detalles', 'informacion', 'información', 'datos exactos'],
+        ];
+
+        foreach ($map as $field => $needles) {
+            if (Str::contains($message, $needles)) {
+                $fields[] = $field;
+            }
+        }
+
+        return array_values(array_unique($fields));
+    }
+
+    private function targetNamesFromMessage(string $message): array
+    {
+        if (! preg_match_all('/\b[\p{Lu}\d][\p{Lu}\d&.\'\- ]{3,}\b/u', $message, $matches)) {
+            return [];
+        }
+
+        $ignored = [
+            'USUARIO', 'AGENTE IA', 'DIRECCION EXACTA', 'DIRECCIÓN EXACTA',
+            'ME PUEDES DAR', 'POR FAVOR',
+        ];
+
+        return collect($matches[0])
+            ->map(fn ($match) => trim((string) $match))
+            ->filter(fn ($match) => $match !== '' && ! in_array(Str::upper($match), $ignored, true))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function recentCatalogLocations(array $history): array
+    {
+        $locations = [];
+
+        foreach (array_reverse($history) as $item) {
+            foreach ((array) data_get($item, 'catalog_locations', []) as $location) {
+                if (is_array($location) && trim((string) data_get($location, 'name', '')) !== '') {
+                    $locations[] = $location;
+                }
+            }
+        }
+
+        return collect($locations)
+            ->unique(fn (array $location) => (string) data_get($location, 'id', data_get($location, 'name', '')))
+            ->values()
+            ->all();
+    }
+
+    private function ordinalIndexFromMessage(string $message): ?int
+    {
+        $text = $this->normalizeSearchText($message);
+        $ordinals = [
+            'primero' => 0,
+            'primer' => 0,
+            '1' => 0,
+            'segundo' => 1,
+            'segunda' => 1,
+            '2' => 1,
+            'tercero' => 2,
+            'tercer' => 2,
+            '3' => 2,
+            'cuarto' => 3,
+            '4' => 3,
+            'quinto' => 4,
+            '5' => 4,
+        ];
+
+        foreach ($ordinals as $needle => $index) {
+            if (preg_match('/\b'.preg_quote($needle, '/').'\b/u', $text)) {
+                return $index;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeSearchText(string $value): string
+    {
+        $normalized = Str::lower(Str::ascii($value));
+        $normalized = preg_replace('/[^a-z0-9]+/u', ' ', $normalized) ?: '';
+
+        return trim(preg_replace('/\s+/', ' ', $normalized) ?: '');
+    }
+
     private function compactLocations(array $locations): array
     {
         return array_map(fn (array $location) => [
@@ -414,7 +624,11 @@ class TourismAgentChatService
             'city' => (string) data_get($location, 'city', ''),
             'address' => (string) data_get($location, 'address', ''),
             'phone' => (string) data_get($location, 'phone', ''),
+            'email' => (string) data_get($location, 'email', ''),
             'website' => (string) data_get($location, 'website', ''),
+            'description' => (string) data_get($location, 'description', ''),
+            'lat' => data_get($location, 'lat'),
+            'lng' => data_get($location, 'lng'),
             'distance_km' => data_get($location, 'distance_km'),
             'score' => data_get($location, 'score'),
             'tags' => array_slice(array_values((array) data_get($location, 'tags', [])), 0, 6),
@@ -455,6 +669,8 @@ class TourismAgentChatService
             'No inventes lugares, telefonos, sitios web, precios, horarios ni distancias. Si se consulto catalogo, basa las recomendaciones concretas solo en esos lugares.',
             'Si el usuario pide lugares segun su ubicacion y no hay ubicacion conocida, pide que comparta ubicacion o indique municipio/zona.',
             'Si hay ubicacion y lugares candidatos, prioriza cercania, necesidad del usuario, presupuesto y variedad. Explica por que recomiendas cada lugar en una frase.',
+            'Si user_intent es exact_place_info, responde con los campos reales disponibles en catalog_context.locations: direccion, telefono, email, web, coordenadas o descripcion. No digas que no tienes la direccion si catalog_context.locations trae address.',
+            'Si el usuario pregunta por la direccion exacta de un lugar encontrado, da la direccion textual exacta y, si existen, ciudad, coordenadas y contacto. Si el campo address esta vacio, dilo claramente y ofrece las coordenadas registradas.',
             'Si la pregunta no requiere base de datos, conversa normalmente como guia turistico de Yucatan.',
             "Tono configurado: {$tone}. Extension configurada: {$responseMode}.",
             $customPrompt !== '' ? "Instrucciones adicionales del administrador:\n{$customPrompt}" : null,
