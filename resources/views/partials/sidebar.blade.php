@@ -81,6 +81,16 @@
                 </div>
 
                 <div class="menu-item">
+                    <a href="{{ route('settings.whatsapp') }}"
+                        class="menu-link {{ request()->is('config/whatsapp*') ? 'active' : '' }}">
+                        <span class="menu-icon">
+                            <i class="ki-outline ki-message-text-2 fs-2"></i>
+                        </span>
+                        <span class="menu-title">Configuracion WhatsApp</span>
+                    </a>
+                </div>
+
+                <div class="menu-item">
                     <a href="{{ route('settings.users') }}"
                         class="menu-link {{ request()->is('config/usuarios*') ? 'active' : '' }}">
                         <span class="menu-icon">

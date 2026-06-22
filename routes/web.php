@@ -5,6 +5,7 @@ use App\Http\Controllers\AgentConfigController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\WhatsappConfigController;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
 
@@ -31,6 +32,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/config/agente/chat', [AgentChatController::class, 'index'])->name('settings.agent.chat');
     Route::get('/config/agente/chat/history', [AgentChatController::class, 'history'])->name('settings.agent.chat.history');
     Route::post('/config/agente/chat', [AgentChatController::class, 'send'])->name('settings.agent.chat.send');
+    Route::get('/config/whatsapp', [WhatsappConfigController::class, 'index'])->name('settings.whatsapp');
+    Route::post('/config/whatsapp', [WhatsappConfigController::class, 'store'])->name('settings.whatsapp.store');
 
     Route::get('/profile', [ProfileController::class, 'show'])->name('profile.index');
     Route::get('/profile/edit', [ProfileController::class, 'edit'])->name('profile.edit');

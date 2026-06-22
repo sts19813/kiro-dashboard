@@ -24,7 +24,7 @@ class AgentConfigController extends Controller
     {
         $path = 'agent-datasets/BD-Restaurantes.csv';
 
-        if (!Storage::disk('public')->exists($path)) {
+        if (! Storage::disk('public')->exists($path)) {
             return response()->json([]);
         }
 
@@ -36,13 +36,15 @@ class AgentConfigController extends Controller
         $data = [];
 
         foreach ($lines as $line) {
-            if (empty(trim($line)))
+            if (empty(trim($line))) {
                 continue;
+            }
 
             $row = array_combine($headers, str_getcsv($line));
 
-            if (!isset($row['lat']) || !isset($row['lng']))
+            if (! isset($row['lat']) || ! isset($row['lng'])) {
                 continue;
+            }
 
             $data[] = [
                 'name' => $row['name'],
@@ -87,6 +89,8 @@ class AgentConfigController extends Controller
     {
         $validated = $request->validate($this->rules());
         $activeConfig = AgentConfig::activeConfig();
+        $whatsappEnabled = $request->boolean('integrations.whatsapp_enabled', true);
+        $webhookUrl = data_get($validated, 'integrations.webhook_url', '');
 
         return AgentConfig::sanitizeConfig([
             'general' => [
@@ -116,9 +120,13 @@ class AgentConfigController extends Controller
                 'human_fallback' => $request->boolean('behavior.human_fallback', true),
             ],
             'integrations' => [
-                'whatsapp_enabled' => $request->boolean('integrations.whatsapp_enabled', true),
-                'webhook_url' => data_get($validated, 'integrations.webhook_url', ''),
+                'whatsapp_enabled' => $whatsappEnabled,
+                'webhook_url' => $webhookUrl,
             ],
+            'whatsapp' => array_replace_recursive((array) data_get($activeConfig, 'whatsapp', []), [
+                'enabled' => $whatsappEnabled,
+                'webhook_callback_url' => $webhookUrl,
+            ]),
             'datasets' => $this->resolvedDatasets(
                 $request,
                 data_get($activeConfig, 'datasets', [])
@@ -169,21 +177,21 @@ class AgentConfigController extends Controller
     private function resolvedDatasets(Request $request, array $currentDatasets): array
     {
         $removeIds = collect((array) $request->input('datasets.remove_ids', []))
-            ->filter(fn($id) => is_scalar($id) && (string) $id !== '')
-            ->map(fn($id) => (string) $id)
+            ->filter(fn ($id) => is_scalar($id) && (string) $id !== '')
+            ->map(fn ($id) => (string) $id)
             ->values();
 
         $currentCollection = collect($currentDatasets)
-            ->filter(fn($dataset) => is_array($dataset));
+            ->filter(fn ($dataset) => is_array($dataset));
 
         $this->deleteRemovedDatasets($currentCollection, $removeIds);
 
         $keptDatasets = $currentCollection
-            ->reject(fn(array $dataset) => $removeIds->contains((string) data_get($dataset, 'id')))
+            ->reject(fn (array $dataset) => $removeIds->contains((string) data_get($dataset, 'id')))
             ->values();
 
         foreach ((array) $request->file('datasets.files', []) as $datasetFile) {
-            if (!$datasetFile) {
+            if (! $datasetFile) {
                 continue;
             }
 
@@ -210,7 +218,7 @@ class AgentConfigController extends Controller
         }
 
         $datasetsToDelete = $currentDatasets
-            ->filter(fn(array $dataset) => $removeIds->contains((string) data_get($dataset, 'id')))
+            ->filter(fn (array $dataset) => $removeIds->contains((string) data_get($dataset, 'id')))
             ->values();
 
         foreach ($datasetsToDelete as $dataset) {

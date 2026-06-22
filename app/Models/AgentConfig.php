@@ -51,6 +51,22 @@ class AgentConfig extends Model
                 'whatsapp_enabled' => true,
                 'webhook_url' => '',
             ],
+            'whatsapp' => [
+                'enabled' => true,
+                'provider' => 'meta_cloud_api',
+                'api_base_url' => 'https://graph.facebook.com',
+                'api_version' => '',
+                'phone_number_id' => '',
+                'business_account_id' => '',
+                'access_token' => '',
+                'webhook_verify_token' => '',
+                'webhook_callback_url' => '',
+                'default_country_code' => '52',
+                'message_unit_cost' => 0.0,
+                'currency_code' => 'MXN',
+                'monthly_budget' => 0.0,
+                'notes' => '',
+            ],
             'datasets' => [],
             'security' => [
                 'api_key' => '',
@@ -106,6 +122,11 @@ class AgentConfig extends Model
     public static function sanitizeConfig(array $config): array
     {
         $merged = array_replace_recursive(self::defaultConfig(), $config);
+        $whatsappEnabled = (bool) data_get(
+            $config,
+            'whatsapp.enabled',
+            data_get($config, 'integrations.whatsapp_enabled', data_get($merged, 'whatsapp.enabled', true))
+        );
 
         return [
             'general' => [
@@ -135,8 +156,28 @@ class AgentConfig extends Model
                 'human_fallback' => (bool) data_get($merged, 'behavior.human_fallback', true),
             ],
             'integrations' => [
-                'whatsapp_enabled' => (bool) data_get($merged, 'integrations.whatsapp_enabled', true),
+                'whatsapp_enabled' => $whatsappEnabled,
                 'webhook_url' => (string) data_get($merged, 'integrations.webhook_url', ''),
+            ],
+            'whatsapp' => [
+                'enabled' => $whatsappEnabled,
+                'provider' => (string) data_get($merged, 'whatsapp.provider', 'meta_cloud_api'),
+                'api_base_url' => (string) data_get($merged, 'whatsapp.api_base_url', 'https://graph.facebook.com'),
+                'api_version' => (string) data_get($merged, 'whatsapp.api_version', ''),
+                'phone_number_id' => (string) data_get($merged, 'whatsapp.phone_number_id', ''),
+                'business_account_id' => (string) data_get($merged, 'whatsapp.business_account_id', ''),
+                'access_token' => (string) data_get($merged, 'whatsapp.access_token', ''),
+                'webhook_verify_token' => (string) data_get($merged, 'whatsapp.webhook_verify_token', ''),
+                'webhook_callback_url' => (string) data_get(
+                    $merged,
+                    'whatsapp.webhook_callback_url',
+                    data_get($merged, 'integrations.webhook_url', '')
+                ),
+                'default_country_code' => (string) data_get($merged, 'whatsapp.default_country_code', '52'),
+                'message_unit_cost' => (float) data_get($merged, 'whatsapp.message_unit_cost', 0.0),
+                'currency_code' => strtoupper((string) data_get($merged, 'whatsapp.currency_code', 'MXN')),
+                'monthly_budget' => (float) data_get($merged, 'whatsapp.monthly_budget', 0.0),
+                'notes' => (string) data_get($merged, 'whatsapp.notes', ''),
             ],
             'datasets' => self::sanitizeDatasets(data_get($merged, 'datasets', [])),
             'security' => [
